@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dino Runner</title>
+    <!-- Bootstrap CSS from CDN -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- React from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.21.2/babel.min.js"></script>
+    <style>
+        :root {
+            --sky-color: #87CEEB;
+            --ground-color: #E1C699;
+            --cactus-color: #2E8B57;
+            --dino-color: #808080;
+            --bird-color: #4682B4;
+        }
+
+        body {
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+            background-color: var(--sky-color);
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            overflow: hidden;
+        }
+
+        .ground {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 100px;
+            background-color: var(--ground-color);
+        }
+
+        .dino {
+            position: absolute;
+            bottom: 100px;
+            left: 50px;
+            width: 50px;
+            height: 60px;
+            background-color: var(--dino-color);
+            border-radius: 5px;
+            transition: bottom 0.1s;
+        }
+
+        .dino.duck {
+            height: 30px;
+            bottom: 100px;
+            width: 60px;
+        }
+
+        .obstacle {
+            position: absolute;
+            bottom: 100px;
+        }
+
+        .cactus {
+            width: 20px;
+            height: 40px;
+            background-color: var(--cactus-color);
+            border-radius: 5px;
+        }
+
+        .bird {
+            width: 40px;
+            height: 20px;
+            background-color: var(--bird-color);
+            border-radius: 5px;
+            bottom: 130px;
+        }
+
+        .score-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-3">
+        <h1 class="text-center">Dino Runner</h1>
+        <div class="text-center mb-3">
+            <p>Press Space, Up or W to jump. Press Down or S to duck.</p>
+            <button id="start-btn" class="btn btn-primary">Start Game</button>
+        </div>
+        <div id="game-container">
+            <div class="ground"></div>
+            <div class="dino"></div>
+            <div class="score-container">Score: <span id="score">0</span></div>
+            <div class="game-over">
+                Game Over!<br>
+                Score: <span id="final-score">0</span><br>
+                <button id="restart-btn" class="btn btn-primary mt-3">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Game variables
+        let score = 0;
+        let isJumping = false;
+        let isDucking = false;
+        let isGameOver = false;
+        let gameSpeed = 5;
+        let obstacles = [];
+        let gameInterval;
+        let groundPosition = 0;
+        
+        // DOM Elements
+        const dino = document.querySelector('.dino');
+        const gameContainer = document.getElementById('game-container');
+        const scoreDisplay = document.getElementById('score');
+        const finalScoreDisplay = document.getElementById('final-score');
+        const gameOverDisplay = document.querySelector('.game-over');
+        const startButton = document.getElementById('start-btn');
+        const restartButton = document.getElementById('restart-btn');
+        
+        // Event Listeners
+        document.addEventListener('keydown', controlDino);
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', restartGame);
+        
+        // Main game functions
+        function startGame() {
+            resetGame();
+            gameInterval = setInterval(updateGame, 20);
+            generateObstacles();
+            startButton.style.display = 'none';
+        }
+        
+        function resetGame() {
+            // Clear all obstacles
+            obstacles.forEach(obstacle => {
+                if (obstacle.element) {
+                    obstacle.element.remove();
+                }
+            });
+            
+            // Reset variables
+            obstacles = [];
+            score = 0;
+            isGameOver = false;
+            gameSpeed = 5;
+            isJumping = false;
+            isDucking = false;
+            
+            // Reset display
+            scoreDisplay.innerText = '0';
+            gameOverDisplay.style.display = 'none';
+            dino.classList.remove('duck');
+        }
+        
+        function restartGame() {
+            resetGame();
+            gameInterval = setInterval(updateGame, 20);
+            generateObstacles();
+        }
+        
+        function updateGame() {
+            // Update score
+            score++;
+            scoreDisplay.innerText = score;
+            
+            // Increase game speed over time
+            if (score % 500 === 0) {
+                gameSpeed += 0.5;
+            }
+            
+            // Move ground
+            groundPosition -= gameSpeed;
+            document.querySelector('.ground').style.backgroundPosition = groundPosition + 'px 0';
+            
+            // Move obstacles
+            moveObstacles();
+            
+            // Check for collisions
+            checkCollisions();
+        }
+        
+        function controlDino(e) {
+            if (isGameOver) return;
+            
+            // Jump
+            if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && !isJumping) {
+                jump();
+            }
+            
+            // Duck
+            if ((e.code === 'ArrowDown' || e.code === 'KeyS') && !isJumping) {
+                duck();
+            }
+        }
+        
+        function jump() {
+            if (isJumping) return;
+            
+            isJumping = true;
+            isDucking = false;
+            dino.classList.remove('duck');
+            
+            let jumpHeight = 0;
+            const jumpUp = setInterval(() => {
+                jumpHeight += 5;
+                dino.style.bottom = (100 + jumpHeight) + 'px';
+                
+                if (jumpHeight >= 100) {
+                    clearInterval(jumpUp);
+                    const jumpDown = setInterval(() => {
+                        jumpHeight -= 5;
+                        dino.style.bottom = (100 + jumpHeight) + 'px';
+                        
+                        if (jumpHeight <= 0) {
+                            clearInterval(jumpDown);
+                            isJumping = false;
+                            dino.style.bottom = '100px';
+                        }
+                    }, 20);
+                }
+            }, 20);
+        }
+        
+        function duck() {
+            if (isJumping) return;
+            
+            isDucking = true;
+            dino.classList.add('duck');
+            
+            setTimeout(() => {
+                if (isDucking) {
+                    isDucking = false;
+                    dino.classList.remove('duck');
+                }
+            }, 1000);
+        }
+        
+        function generateObstacles() {
+            if (isGameOver) return;
+            
+            const delay = Math.floor(Math.random() * 2000) + 1000;
+            
+            setTimeout(() => {
+                if (!isGameOver) {
+                    createObstacle();
+                    generateObstacles();
+                }
+            }, delay);
+        }
+        
+        function createObstacle() {
+            const obstacle = document.createElement('div');
+            obstacle.classList.add('obstacle');
+            
+            // Randomly choose between bird and cactus
+            const isBird = Math.random() > 0.7;
+            
+            if (isBird) {
+                obstacle.classList.add('bird');
+            } else {
+                obstacle.classList.add('cactus');
+            }
+            
+            obstacle.style.left = gameContainer.offsetWidth + 'px';
+            gameContainer.appendChild(obstacle);
+            
+            obstacles.push({
+                element: obstacle,
+                type: isBird ? 'bird' : 'cactus'
+            });
+        }
+        
+        function moveObstacles() {
+            obstacles.forEach((obstacle, index) => {
+                const currentLeft = parseInt(obstacle.element.style.left);
+                const newLeft = currentLeft - gameSpeed;
+                
+                if (newLeft < -50) {
+                    // Remove obstacle when it's off-screen
+                    obstacle.element.remove();
+                    obstacles.splice(index, 1);
+                } else {
+                    obstacle.element.style.left = newLeft + 'px';
+                }
+            });
+        }
+        
+        function checkCollisions() {
+            const dinoRect = dino.getBoundingClientRect();
+            
+            obstacles.forEach(obstacle => {
+                const obstacleRect = obstacle.element.getBoundingClientRect();
+                
+                if (
+                    dinoRect.right > obstacleRect.left &&
+                    dinoRect.left < obstacleRect.right &&
+                    dinoRect.bottom > obstacleRect.top &&
+                    dinoRect.top < obstacleRect.bottom
+                ) {
+                    // Collision detected!
+                    gameOver();
+                }
+            });
+        }
+        
+        function gameOver() {
+            isGameOver = true;
+            clearInterval(gameInterval);
+            
+            // Show game over screen
+            finalScoreDisplay.innerText = score;
+            gameOverDisplay.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
